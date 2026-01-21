@@ -16,7 +16,16 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from api import  endpoints
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    path('auth/register/', endpoints.register),
+    path('auth/login/', endpoints.login),
+    path('users/<int:id>/', endpoints.user_detail),
+    path('users/<int:id>/', endpoints.edit_user),
+    path('users/<int:id>/', endpoints.delete_user),
+    path('ingredients/', endpoints.ingredients_list),
+    path('ingredients/pairings/', endpoints.pairings_create),
 ]
