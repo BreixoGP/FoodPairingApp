@@ -1,3 +1,40 @@
+from django.contrib.auth.models import AbstractUser
 from django.db import models
 
-# Create your models here.
+class AppUser(AbstractUser):
+    email = models.EmailField(unique=True)
+
+    groups = models.ManyToManyField(
+        'auth.Group',
+        related_name='appuser_groups',
+        blank=True,
+        help_text='The groups this user belongs to.',
+        verbose_name='groups'
+    )
+    user_permissions = models.ManyToManyField(
+        'auth.Permission',
+        related_name='appuser_permissions',
+        blank=True,
+        help_text='Specific permissions for this user.',
+        verbose_name='user permissions'
+    )
+
+class FlavorProfile(models.Model):
+    name = models.CharField(max_length=50)
+
+class Ingredient(models.Model):
+    name = models.CharField(max_length=100)
+    flavor_profiles = models.ManyToManyField(FlavorProfile, through='IngredientFlavor')
+
+class IngredientFlavor(models.Model):
+    ingredient = models.ForeignKey(Ingredient, on_delete=models.CASCADE)
+    flavor = models.ForeignKey(FlavorProfile, on_delete=models.CASCADE)
+    intensity = models.IntegerField(default=5)
+    cooking_method = models.CharField(max_length=50, blank=True, null=True)
+
+class Pairing(models.Model):
+    ingredients = models.ManyToManyField(Ingredient)
+    score = models.IntegerField()
+    reason = models.TextField()
+
+
