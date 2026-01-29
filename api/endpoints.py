@@ -4,7 +4,7 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from api.models import AppUser, UserSession, Ingredient, FlavorProfile
+from api.models import AppUser, UserSession, Ingredient, FlavorProfile, Pairing
 
 
 @csrf_exempt
@@ -191,3 +191,33 @@ def ingredients_list(request):
 
 	else:
 		return JsonResponse({"error": "HTTP method not allowed"}, status=405)
+
+@csrf_exempt
+def pairings_list(request):
+	user = authenticate_request(request)
+	if not user:
+		return JsonResponse({"error": "Unauthorized"}, status=401)
+
+	if request.method != "POST":
+		return JsonResponse({"error": "HTTP method not allowed"}, status=405)
+
+	try:
+		body = json.loads(request.body)
+	except json.JSONDecodeError:
+		return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+	ingredient_ids = body.get("ingredient_ids", [])
+	if not ingredient_ids:
+		return JsonResponse({"error": "No ingredients provided"}, status=400)
+
+	pairings = Pairing.objects.filter(ingredients__id__in=ingredient_ids).distinct()
+	result = [
+		{
+			"id": p.pk,
+			"ingredients": [i.name for i in p.ingredients.all()],
+			"score": p.score,
+			"reason": p.reason
+		} for p in pairings
+	]
+
+	return JsonResponse({"pairings": result}, status=200)
