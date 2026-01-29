@@ -35,6 +35,8 @@ class FlavorProfile(models.Model):
 class Ingredient(models.Model):
 	name = models.CharField(max_length=100)
 	flavor_profiles = models.ManyToManyField(FlavorProfile, through='IngredientFlavor')
+	def __str__(self):
+		return self.name
 
 class IngredientFlavor(models.Model):
 	ingredient = models.ForeignKey(Ingredient, on_delete=models.CASCADE)
