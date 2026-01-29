@@ -1,7 +1,7 @@
 Currently under development...
 
 
-FoodPairingApp is an application developed as a final project for a cross-platform application development course.
+FoodPairingApp is an application thought as a final project for a cross-platform application development course.
 The main idea is for users to select one or more ingredients and discover which food combinations work best together.
 
 The project is structured as a client-server system:
