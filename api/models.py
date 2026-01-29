@@ -29,6 +29,9 @@ class UserSession(models.Model):
 class FlavorProfile(models.Model):
 	name = models.CharField(max_length=50)
 
+	def __str__(self):
+		return self.name
+
 class Ingredient(models.Model):
 	name = models.CharField(max_length=100)
 	flavor_profiles = models.ManyToManyField(FlavorProfile, through='IngredientFlavor')

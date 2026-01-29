@@ -4,7 +4,7 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from api.models import AppUser, UserSession, Ingredient, FlavorProfile, Pairing
+from api.models import AppUser, UserSession, Ingredient, FlavorProfile, Pairing, IngredientFlavor
 
 
 @csrf_exempt
@@ -151,46 +151,52 @@ def authenticate_request(request):
 @csrf_exempt
 def ingredients_list(request):
 	user = authenticate_request(request)
+	if not user:
+		return JsonResponse({"error": "Unauthorized"}, status=401)
 
 	if request.method == 'GET':
-		ingredients = [
-			{
+		data = []
+
+		for ing in Ingredient.objects.all():
+			variants = {}
+
+			for f in IngredientFlavor.objects.filter(ingredient=ing):
+				method = f.cooking_method or "default"
+
+				if method not in variants:
+					variants[method] = []
+
+				variants[method].append({
+					"flavor": f.flavor.name,
+					"intensity": f.intensity
+				})
+
+			data.append({
 				"id": ing.pk,
 				"name": ing.name,
-				"flavor_profiles": [fp.name for fp in ing.flavor_profiles.all()]
-			}
-			for ing in Ingredient.objects.all()
-		]
-		return JsonResponse({"ingredients": ingredients}, status=200)
+				"variants": variants
+			})
+
+		return JsonResponse({"ingredients": data}, status=200)
 
 	elif request.method == 'POST':
 		if not user or not user.is_superuser:
 			return JsonResponse({"error": "Forbidden"}, status=403)
 
-		try:
-			body = json.loads(request.body)
-		except json.JSONDecodeError:
-			return JsonResponse({"error": "Invalid JSON"}, status=400)
-
+		body = json.loads(request.body)
 		name = body.get("name")
-		flavor_ids = body.get("flavor_profile_ids", [])
 
 		if not name:
 			return JsonResponse({"error": "Missing name"}, status=400)
 
 		ingredient = Ingredient.objects.create(name=name)
-		if flavor_ids:
-			flavors = FlavorProfile.objects.filter(pk__in=flavor_ids)
-			ingredient.flavor_profiles.set(flavors)
 
 		return JsonResponse({
-			"message": "Ingredient created",
 			"id": ingredient.pk,
 			"name": ingredient.name
 		}, status=201)
+	return JsonResponse({"error": "HTTP method not allowed"}, status=405)
 
-	else:
-		return JsonResponse({"error": "HTTP method not allowed"}, status=405)
 
 @csrf_exempt
 def pairings_list(request):
@@ -207,17 +213,80 @@ def pairings_list(request):
 		return JsonResponse({"error": "Invalid JSON"}, status=400)
 
 	ingredient_ids = body.get("ingredient_ids", [])
+
 	if not ingredient_ids:
 		return JsonResponse({"error": "No ingredients provided"}, status=400)
 
-	pairings = Pairing.objects.filter(ingredients__id__in=ingredient_ids).distinct()
-	result = [
-		{
-			"id": p.pk,
-			"ingredients": [i.name for i in p.ingredients.all()],
-			"score": p.score,
-			"reason": p.reason
-		} for p in pairings
-	]
+	if len(ingredient_ids) > 3:
+		return JsonResponse({"error": "Too many ingredients (max 3)"}, status=400)
 
-	return JsonResponse({"pairings": result}, status=200)
+	ingredients = Ingredient.objects.filter(pk__in=ingredient_ids)
+
+	# 1️⃣ Obtener variantes por ingrediente
+	variants_per_ingredient = []
+
+	for ing in ingredients:
+		variants = IngredientFlavor.objects.filter(ingredient=ing)
+
+		methods = {}
+		for v in variants:
+			methods.setdefault(v.cooking_method or "raw", []).append(v)
+
+		variants_per_ingredient.append({
+			"ingredient": ing,
+			"methods": methods
+		})
+
+	# 2️⃣ Generar combinaciones de métodos
+	method_combinations = list(product(*[
+		list(v["methods"].keys()) for v in variants_per_ingredient
+	]))
+
+	results = []
+
+	# 3️⃣ Para cada combinación → construir perfil base
+	for combo in method_combinations:
+		base_profile = {}
+		base_description = []
+
+		for idx, method in enumerate(combo):
+			ing = variants_per_ingredient[idx]["ingredient"]
+			flavors = variants_per_ingredient[idx]["methods"][method]
+
+			base_description.append({
+				"ingredient": ing.name,
+				"method": method
+			})
+
+			for f in flavors:
+				base_profile[f.flavor.name] = (
+					base_profile.get(f.flavor.name, 0) + f.intensity
+				)
+
+		# 4️⃣ Comparar con otros ingredientes
+		pairings = []
+
+		for candidate in Ingredient.objects.exclude(pk__in=ingredient_ids):
+			score = 0
+			common_flavors = []
+
+			for f in IngredientFlavor.objects.filter(ingredient=candidate):
+				if f.flavor.name in base_profile:
+					score += min(base_profile[f.flavor.name], f.intensity)
+					common_flavors.append(f.flavor.name)
+
+			if score >= 5:
+				pairings.append({
+					"ingredient": candidate.name,
+					"score": score,
+					"common_flavors": list(set(common_flavors))
+				})
+
+		if pairings:
+			pairings.sort(key=lambda x: x["score"], reverse=True)
+			results.append({
+				"base": base_description,
+				"pairings": pairings
+			})
+
+	return JsonResponse({"results": results}, status=200)

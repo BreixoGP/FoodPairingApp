@@ -25,5 +25,5 @@ urlpatterns = [
 	path('auth/login/', endpoints.login),
 	path('users/<int:id>/', endpoints.user_detail),
 	path('ingredients/', endpoints.ingredients_list),
-	path('ingredients/pairings/', endpoints.pairings_create),
+	path('ingredients/pairings/', endpoints.pairings_list),
 ]
