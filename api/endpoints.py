@@ -4,7 +4,7 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from api.models import AppUser, UserSession
+from api.models import AppUser, UserSession, Ingredient, FlavorProfile
 
 
 @csrf_exempt
@@ -148,3 +148,46 @@ def authenticate_request(request):
 		return session.user
 	except UserSession.DoesNotExist:
 		return None
+@csrf_exempt
+def ingredients_list(request):
+	user = authenticate_request(request)
+
+	if request.method == 'GET':
+		ingredients = [
+			{
+				"id": ing.pk,
+				"name": ing.name,
+				"flavor_profiles": [fp.name for fp in ing.flavor_profiles.all()]
+			}
+			for ing in Ingredient.objects.all()
+		]
+		return JsonResponse({"ingredients": ingredients}, status=200)
+
+	elif request.method == 'POST':
+		if not user or not user.is_superuser:
+			return JsonResponse({"error": "Forbidden"}, status=403)
+
+		try:
+			body = json.loads(request.body)
+		except json.JSONDecodeError:
+			return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+		name = body.get("name")
+		flavor_ids = body.get("flavor_profile_ids", [])
+
+		if not name:
+			return JsonResponse({"error": "Missing name"}, status=400)
+
+		ingredient = Ingredient.objects.create(name=name)
+		if flavor_ids:
+			flavors = FlavorProfile.objects.filter(pk__in=flavor_ids)
+			ingredient.flavor_profiles.set(flavors)
+
+		return JsonResponse({
+			"message": "Ingredient created",
+			"id": ingredient.pk,
+			"name": ingredient.name
+		}, status=201)
+
+	else:
+		return JsonResponse({"error": "HTTP method not allowed"}, status=405)
