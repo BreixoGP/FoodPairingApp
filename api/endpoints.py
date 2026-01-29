@@ -54,3 +54,42 @@ def user_detail(request, id):
 
     else:
         return JsonResponse({"error": "Método HTTP no soportado"}, status=405)
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+from .models import AppUser
+from django.contrib.auth.hashers import make_password
+
+@csrf_exempt
+def register(request):
+    if request.method != 'POST':
+        return JsonResponse({"error": "Método HTTP no soportado"}, status=405)
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "JSON inválido"}, status=400)
+
+    username = body.get("username")
+    email = body.get("email")
+    password = body.get("password")
+
+    # Validaciones básicas
+    if not username or not password or not email:
+        return JsonResponse({"error": "Faltan campos"}, status=400)
+
+    # Verificar unicidad
+    if AppUser.objects.filter(username=username).exists():
+        return JsonResponse({"error": "Ese nombre de usuario ya existe"}, status=409)
+    if AppUser.objects.filter(email=email).exists():
+        return JsonResponse({"error": "Ese email ya está en uso"}, status=409)
+
+    # Crear usuario
+    user = AppUser.objects.create(
+        username=username,
+        email=email,
+        password=make_password(password)  # encripta la contraseña
+    )
+
+    return JsonResponse({"message": "Usuario creado correctamente", "id": user.pk}, status=201)
