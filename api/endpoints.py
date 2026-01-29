@@ -4,62 +4,9 @@ from django.contrib.auth.hashers import make_password
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from api.models import AppUser
+from api.models import AppUser, UserSession
 
 
-@csrf_exempt
-def user_detail(request, id):
-    try:
-        user = AppUser.objects.get(id=id)
-    except AppUser.DoesNotExist:
-        return JsonResponse({"error": "Usuario no encontrado"}, status=404)
-
-    if request.method == 'GET':
-        return JsonResponse({
-            "id": user.pk,
-            "username": user.username,
-            "email": user.email
-        }, status=200)
-
-    elif request.method == 'PUT':
-        try:
-            body = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "JSON inválido"}, status=400)
-
-        username = body.get("username")
-        email = body.get("email")
-        password = body.get("password")
-
-        # Validar unicidad
-        if username:
-            if AppUser.objects.filter(username=username).exclude(id=user.id).exists():
-                return JsonResponse({"error": "Ese nombre de usuario ya existe"}, status=409)
-            user.username = username
-
-        if email:
-            if AppUser.objects.filter(email=email).exclude(id=user.id).exists():
-                return JsonResponse({"error": "Ese email ya está en uso"}, status=409)
-            user.email = email
-
-        if password:
-            user.password = make_password(password)
-
-        user.save()
-        return JsonResponse({"message": "Usuario actualizado"}, status=200)
-
-    elif request.method == 'DELETE':
-        user.delete()
-        return JsonResponse({"message": "Usuario eliminado"}, status=200)
-
-    else:
-        return JsonResponse({"error": "Método HTTP no soportado"}, status=405)
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from .models import AppUser
-from django.contrib.auth.hashers import make_password
 
 @csrf_exempt
 def register(request):
@@ -93,3 +40,70 @@ def register(request):
     )
 
     return JsonResponse({"message": "Usuario creado correctamente", "id": user.pk}, status=201)
+
+
+
+@csrf_exempt
+def user_detail(request, id):
+    user = authenticate_request(request)
+    if not user:
+        return JsonResponse({"error": "No autorizado"}, status=401)
+
+    if user.pk != id:
+        return JsonResponse({"error": "No puedes acceder a otro usuario"}, status=403)
+
+    # Ahora podemos usar tu lógica normal de GET, PUT, DELETE
+    if request.method == 'GET':
+        return JsonResponse({
+            "id": user.pk,
+            "username": user.username,
+            "email": user.email
+        }, status=200)
+
+    elif request.method == 'PUT':
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido"}, status=400)
+
+        username = body.get("username")
+        email = body.get("email")
+        password = body.get("password")
+
+        if username:
+            if AppUser.objects.filter(username=username).exclude(pk=user.pk).exists():
+                return JsonResponse({"error": "Ese nombre de usuario ya existe"}, status=409)
+            user.username = username
+
+        if email:
+            if AppUser.objects.filter(email=email).exclude(pk=user.pk).exists():
+                return JsonResponse({"error": "Ese email ya está en uso"}, status=409)
+            user.email = email
+
+        if password:
+            user.password = make_password(password)
+
+        user.save()
+        return JsonResponse({"message": "Usuario actualizado"}, status=200)
+
+    elif request.method == 'DELETE':
+        user.delete()
+        return JsonResponse({"message": "Usuario eliminado"}, status=200)
+
+    else:
+        return JsonResponse({"error": "Método HTTP no soportado"}, status=405)
+
+def authenticate_request(request):
+    """
+    Devuelve el usuario asociado al token en headers o None si no hay token válido.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Token "):
+        return None
+
+    token = auth_header.split(" ")[1]
+    try:
+        session = UserSession.objects.get(token=token)
+        return session.user
+    except UserSession.DoesNotExist:
+        return None
