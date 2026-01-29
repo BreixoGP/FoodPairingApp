@@ -1,3 +1,5 @@
+import secrets
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
@@ -18,6 +20,11 @@ class AppUser(AbstractUser):
         help_text='Specific permissions for this user.',
         verbose_name='user permissions'
     )
+
+class UserSession(models.Model):
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE)
+    token = models.CharField(max_length=64, unique=True, default=secrets.token_hex(16))
+    created_at = models.DateTimeField(auto_now_add=True)
 
 class FlavorProfile(models.Model):
     name = models.CharField(max_length=50)
